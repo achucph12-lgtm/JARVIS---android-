@@ -1,16 +1,22 @@
+
 name: Build JARVIS APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -20,29 +26,55 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Extract project
+      - name: Extract JARVIS project
+        shell: bash
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -name '*.zip' -print -quit)
+          set -euo pipefail
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "JARVIS ZIP file not found!"
+            exit 1
+          fi
+
+          mkdir -p unpacked
           unzip -q "$ZIP_FILE" -d unpacked
-          APP_FILE=$(find unpacked -path '*/app/build.gradle.kts' -print -quit)
+
+          APP_FILE=$(find unpacked -type f \
+            -path '*/app/build.gradle.kts' -print -quit)
+
+          if [ -z "$APP_FILE" ]; then
+            echo "Android app build.gradle.kts not found!"
+            exit 1
+          fi
+
           PROJECT_DIR=$(dirname "$(dirname "$APP_FILE")")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Build APK
-        run: |
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
+          echo "Project found at: $PROJECT_DIR"
 
-      - name: Upload APK
+      - name: Build JARVIS APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
+
+      - name: Upload JARVIS APK
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-APK
           path: unpacked/**/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           
